@@ -5,10 +5,12 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from datetime import datetime, timedelta
 import random
 
+# Configure Spotify API authentication
 client_id = 'ENTER YOUR SPOTIFY CLIENT ID'
 client_secret = 'ENTER YOUR SPOTIFY CLIENT SECRET'
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, client_secret=client_secret))
 
+# Function to search for a Spotify track
 def search_spotify_track(track_name, artist_name, album_name):
     query = f"track:{track_name} artist:{artist_name} album:{album_name}"
     result = sp.search(q=query, type='track', limit=1)
@@ -23,6 +25,7 @@ def search_spotify_track(track_name, artist_name, album_name):
         }
     return None
 
+# Function to adjust the timestamp based on ms_played
 def adjust_timestamp(ts, ms_played, reverse=False):
     dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
     delta = timedelta(milliseconds=ms_played)
@@ -32,86 +35,101 @@ def adjust_timestamp(ts, ms_played, reverse=False):
         new_dt = dt + delta
     return new_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-def generate_entries(track_info, start_year, num_entries):
+# Function to generate JSON entries
+def generate_entries(username, track_infos, start_year, num_entries):
     start_date = datetime.strptime(f"{start_year}-01-01T08:00:00Z", "%Y-%m-%dT%H:%M:%SZ")
     max_date = datetime.strptime(f"{start_year}-12-25T23:59:59Z", "%Y-%m-%dT%H:%M:%SZ")
-    
-    template = {
-        "ts": start_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "username": "31dlfbglxnvsmqoixe74mzp64tay",
-        "platform": "android",
-        "ms_played": track_info["ms_played"],
-        "conn_country": "FR",
-        "ip_addr_decrypted": "8.8.8.8",
-        "user_agent_decrypted": "unknown",
-        "master_metadata_track_name": track_info["master_metadata_track_name"],
-        "master_metadata_album_artist_name": track_info["master_metadata_album_artist_name"],
-        "master_metadata_album_album_name": track_info["master_metadata_album_album_name"],
-        "spotify_track_uri": track_info["spotify_track_uri"],
-        "episode_name": None,
-        "episode_show_name": None,
-        "spotify_episode_uri": None,
-        "reason_start": "trackdone",
-        "reason_end": "trackdone",
-        "shuffle": True,
-        "skipped": False,
-        "offline": False,
-        "offline_timestamp": 1715445864,
-        "incognito_mode": False
-    }
 
     data = []
     last_ts = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
-    added_entries = 0
 
     for i in range(num_entries):
-        new_entry = template.copy()
-        new_entry["ts"] = last_ts
-        new_entry["ms_played"] = track_info["ms_played"]
+        track_info = random.choice(track_infos)
+        template = {
+            "ts": last_ts,
+            "username": username,
+            "platform": "android",
+            "ms_played": track_info["ms_played"],
+            "conn_country": "FR",
+            "ip_addr_decrypted": "8.8.8.8",
+            "user_agent_decrypted": "unknown",
+            "master_metadata_track_name": track_info["master_metadata_track_name"],
+            "master_metadata_album_artist_name": track_info["master_metadata_album_artist_name"],
+            "master_metadata_album_album_name": track_info["master_metadata_album_album_name"],
+            "spotify_track_uri": track_info["spotify_track_uri"],
+            "episode_name": None,
+            "episode_show_name": None,
+            "spotify_episode_uri": None,
+            "reason_start": "trackdone",
+            "reason_end": "trackdone",
+            "shuffle": True,
+            "skipped": False,
+            "offline": False,
+            "offline_timestamp": 1715445864,
+            "incognito_mode": False
+        }
+
         current_time = datetime.strptime(last_ts, "%Y-%m-%dT%H:%M:%SZ")
-
-        if current_time.time() < datetime.strptime("23:30:00", "%H:%M:%S").time() or current_time.time() > datetime.strptime("08:00:00", "%H:%M:%S").time():
-            data.append(new_entry)
-            added_entries += 1
-        else:
-            print(f"Horodatage {last_ts} non ajouté car il est entre 23:30 et 08:00")
-
-        last_ts = adjust_timestamp(last_ts, new_entry["ms_played"])
         
-        if datetime.strptime(last_ts, "%Y-%m-%dT%H:%M:%SZ").time() > datetime.strptime("23:30:00", "%H:%M:%S").time():
+        # For June, do not apply time restrictions
+        if current_time.month == 6 or (current_time.time() < datetime.strptime("23:30:00", "%H:%M:%S").time() and current_time.time() > datetime.strptime("08:00:00", "%H:%M:%S").time()):
+            data.append(template)
+        else:
+            print(f"Timestamp {last_ts} not added as it is between 23:30 and 08:00")
+
+        last_ts = adjust_timestamp(last_ts, track_info["ms_played"])
+        
+        # Check if we go beyond 23:30 and adjust to resume at 08:00, except in June
+        if current_time.month != 6 and datetime.strptime(last_ts, "%Y-%m-%dT%H:%M:%SZ").time() > datetime.strptime("23:30:00", "%H:%M:%S").time():
             next_day = datetime.strptime(last_ts, "%Y-%m-%dT%H:%M:%SZ").date() + timedelta(days=1)
             last_ts = f"{next_day}T08:00:00Z"
         
+        # Check if we go beyond the max date
         if datetime.strptime(last_ts, "%Y-%m-%dT%H:%M:%SZ") > max_date:
-            print(f"Atteint la date limite {last_ts}, arrêt des ajouts")
+            print(f"Reached the max date {last_ts}, stopping additions")
             break
 
     return data
 
+# Interactive menu
 questions = [
-    inquirer.Text('track_name', message="Nom de la piste"),
-    inquirer.Text('artist_name', message="Nom de l'artiste"),
-    inquirer.Text('album_name', message="Nom de l'album"),
-    inquirer.Text('start_year', message="Année de début", validate=lambda _, x: x.isdigit() and 1900 <= int(x) <= 2100),
-    inquirer.Text('num_entries', message="Nombre d'entrées", validate=lambda _, x: x.isdigit())
+    inquirer.Text('username', message="Spotify username"),
+    inquirer.Text('num_tracks', message="Number of different tracks", validate=lambda _, x: x.isdigit() and int(x) > 0),
+    inquirer.Text('start_year', message="Start year", validate=lambda _, x: x.isdigit() and 1900 <= int(x) <= 2100),
+    inquirer.Text('num_entries', message="Number of entries", validate=lambda _, x: x.isdigit() and int(x) > 0)
 ]
 
 answers = inquirer.prompt(questions)
-track_name = answers['track_name']
-artist_name = answers['artist_name']
-album_name = answers['album_name']
-start_year = answers['start_year']
+username = answers['username']
+num_tracks = int(answers['num_tracks'])
+start_year = int(answers['start_year'])
 num_entries = int(answers['num_entries'])
 
-track_info = search_spotify_track(track_name, artist_name, album_name)
+track_infos = []
+for i in range(num_tracks):
+    track_questions = [
+        inquirer.Text(f'track_name_{i}', message=f"Track {i+1} name"),
+        inquirer.Text(f'artist_name_{i}', message=f"Artist {i+1} name"),
+        inquirer.Text(f'album_name_{i}', message=f"Album {i+1} name")
+    ]
+    track_answers = inquirer.prompt(track_questions)
+    track_name = track_answers[f'track_name_{i}']
+    artist_name = track_answers[f'artist_name_{i}']
+    album_name = track_answers[f'album_name_{i}']
 
-if track_info:
-    entries = generate_entries(track_info, start_year, num_entries)
+    track_info = search_spotify_track(track_name, artist_name, album_name)
+    if track_info:
+        track_infos.append(track_info)
+    else:
+        print(f"Track {track_name} by {artist_name} from album {album_name} not found on Spotify. Please check the information provided.")
+        exit(1)
 
-    file_name = f'Streaming_History_Audio_{start_year}.json'
-    with open(file_name, 'w', encoding='utf-8') as file:
-        json.dump(entries, file, ensure_ascii=False, indent=4)
-    
-    print(f"{len(entries)} nouvelles entrées ajoutées avec succès dans {file_name}.")
-else:
-    print("Piste introuvable sur Spotify. Veuillez vérifier les informations fournies.")
+# Generate the entries
+entries = generate_entries(username, track_infos, start_year, num_entries)
+
+# Save the entries to a JSON file
+file_name = f'Streaming_History_Audio_{start_year}.json'
+with open(file_name, 'w', encoding='utf-8') as file:
+    json.dump(entries, file, ensure_ascii=False, indent=4)
+
+print(f"{len(entries)} new entries successfully added to {file_name}.")
